@@ -1,0 +1,125 @@
+From ce165b225c3dd9596883ba63160bfd2a791ef46f Mon Sep 17 00:00:00 2001
+From: Joe Jamison <joe@smaklab.com>
+Date: Sat, 7 Jan 2023 13:45:23 -0600
+Subject: [PATCH] Extra row in the help bar for high-res X display windows
+ When using nano on a high-resolution X display, there can be room for the
+ help bar to be expanded an additional row.  If the window has more than 160 
+ columns, this patch will enable nano to add a third line of shortcuts.
+
+Signed-off-by: Joe Jamison <joe@smaklab.com>
+---
+ src/global.c |  8 +++++++-
+ src/nano.c   | 10 +++++-----
+ src/winio.c  | 16 ++++++++++++----
+ 3 files changed, 24 insertions(+), 10 deletions(-)
+
+diff --git a/src/global.c b/src/global.c
+index a4b5da93..6fc6e691 100644
+--- a/src/global.c
++++ b/src/global.c
+@@ -430,7 +430,13 @@ const keystruct *first_sc_for(int menu, void (*function)(void))
+ size_t shown_entries_for(int menu)
+ {
+ 	funcstruct *item = allfuncs;
+-	size_t maximum = ((COLS + 40) / 20) * 2;
++
++    int max_entries = 2;
++    if (COLS > 160) {
++        max_entries = 3;
++    }
++
++	size_t maximum = ((COLS + 40) / 20) * max_entries;
+ 	size_t count = 0;
+ 
+ 	while (count < maximum && item != NULL) {
+diff --git a/src/nano.c b/src/nano.c
+index e40d083d..3e4cd4f5 100644
+--- a/src/nano.c
++++ b/src/nano.c
+@@ -422,6 +422,9 @@ void window_init(void)
+ 	} else {
+ 		int toprows = ((ISSET(EMPTY_LINE) && LINES > 6) ? 2 : 1);
+ 		int bottomrows = ((ISSET(NO_HELP) || LINES < 6) ? 1 : 3);
++		if (COLS > 160) {
++            bottomrows++;
++		}
+ 
+ 		if (ISSET(MINIBAR) || ISSET(ZERO))
+ 			toprows = 0;
+@@ -1388,7 +1391,7 @@ bool wanted_to_move(void (*func)(void))
+ }
+ 
+ /* Return TRUE when the given function makes a change -- no good for view mode. */
+-bool changes_something(functionptrtype f)
++bool changes_something(const void *f)
+ {
+ 	return (f == do_savefile || f == do_writeout || f == do_enter || f == do_tab ||
+ 			f == do_delete || f == do_backspace || f == cut_text || f == paste_text ||
+@@ -1443,10 +1446,7 @@ void suck_up_input_and_paste_it(void)
+ 			beep();
+ 	}
+ 
+-	if (ISSET(VIEW_MODE))
+-		print_view_warning();
+-	else
+-		paste_text();
++	paste_text();
+ 
+ 	free_lines(cutbuffer);
+ 	cutbuffer = was_cutbuffer;
+diff --git a/src/winio.c b/src/winio.c
+index ab2eb9e6..160c0e6d 100644
+--- a/src/winio.c
++++ b/src/winio.c
+@@ -1726,6 +1726,9 @@ void blank_bottombars(void)
+ 	if (!ISSET(NO_HELP) && LINES > 5) {
+ 		blank_row(footwin, 1);
+ 		blank_row(footwin, 2);
++		if (COLS > 160) {
++       	    blank_row(footwin, 3);
++		}
+ 	}
+ }
+ 
+@@ -2423,6 +2426,11 @@ void bottombars(int menu)
+ 	const keystruct *s;
+ 	funcstruct *f;
+ 
++    int entry_cols = 2;
++    if (COLS > 160) {
++        entry_cols = 3;
++    }
++
+ 	/* Set the global variable to the given menu. */
+ 	currmenu = menu;
+ 
+@@ -2433,7 +2441,7 @@ void bottombars(int menu)
+ 	number = shown_entries_for(menu);
+ 
+ 	/* Compute the width of each keyname-plus-explanation pair. */
+-	itemwidth = COLS / ((number + 1) / 2);
++	itemwidth = COLS / ((number + 1) / (entry_cols - 0.01));
+ 
+ 	/* If there is no room, don't print anything. */
+ 	if (itemwidth == 0)
+@@ -2454,14 +2462,14 @@ void bottombars(int menu)
+ 		if (s == NULL)
+ 			continue;
+ 
+-		wmove(footwin, 1 + index % 2, (index / 2) * itemwidth);
++		wmove(footwin, 1 + index % entry_cols, (index / entry_cols) * itemwidth);
+ 
+ 		/* When the number is uneven, the penultimate item can be double wide. */
+-		if ((number % 2) == 1 && (index + 2 == number))
++		if ((number % entry_cols) == 1 && (index + entry_cols == number))
+ 			thiswidth += itemwidth;
+ 
+ 		/* For the last two items, use also the remaining slack. */
+-		if (index + 2 >= number)
++		if (index + entry_cols >= number)
+ 			thiswidth += COLS % itemwidth;
+ 
+ 		post_one_key(s->keystr, _(f->tag), thiswidth);
+-- 
+2.30.2
+
